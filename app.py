@@ -140,7 +140,7 @@ st.subheader("💰 요금 산출 결과")
 res = calculate_fares(distance, vehicle, selected_surcharges)
 
 if res["over_range"]:
-    st.warning(f"⚠️ 입력 거리({distance:.1f}km)가 요금표 최대 구간(220km)을 초과합니다. 220km 기준 요금으로 표시됩니다.")
+    st.warning(f"⚠️ 입력 거리({distance:.1f}km)가 요금표 최대 구간(500km)을 초과합니다. 500km 기준 요금으로 표시됩니다.")
 
 if res["is_negotiable"]:
     st.info(f"💬 **{vehicle}**는 표시 요금이 최저가입니다. 실제 요금은 화물 상태에 따라 협의하세요.")
