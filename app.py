@@ -26,7 +26,8 @@ st.set_page_config(page_title="퀵 서비스 요금 계산기", page_icon="🚚"
 st.title("🚚 퀵 서비스 요금 & 길찾기 계산기")
 st.markdown("출발/도착지를 검색하여 거리를 확인하고, 고객 청구 요금과 실제 운영 수익을 계산해 보세요.")
 
-if config.KAKAO_API_KEY == "여기에_API_키를_입력하세요" or not config.KAKAO_API_KEY.strip():
+api_ready = config.KAKAO_API_KEY.strip() and config.KAKAO_API_KEY != "여기에_API_키를_입력하세요"
+if not api_ready:
     st.error("⚠️ 카카오 REST API 키가 설정되지 않았습니다. 환경변수 `KAKAO_API_KEY`를 설정해 주세요.")
 
 st.divider()
@@ -40,7 +41,7 @@ end_loc = None
 
 with col_addr1:
     start_keyword = st.text_input("출발지 검색어 (입력 후 Enter)", placeholder="예: 강남역, 서울시청")
-    if start_keyword and config.KAKAO_API_KEY.strip() and config.KAKAO_API_KEY != "여기에_API_키를_입력하세요":
+    if start_keyword and api_ready:
         start_res = search_places_kakao(start_keyword, config.KAKAO_API_KEY)
         if start_res:
             start_options = {
@@ -54,7 +55,7 @@ with col_addr1:
 
 with col_addr2:
     end_keyword = st.text_input("도착지 검색어 (입력 후 Enter)", placeholder="예: 부산역, 광화문")
-    if end_keyword and config.KAKAO_API_KEY.strip() and config.KAKAO_API_KEY != "여기에_API_키를_입력하세요":
+    if end_keyword and api_ready:
         end_res = search_places_kakao(end_keyword, config.KAKAO_API_KEY)
         if end_res:
             end_options = {
@@ -112,12 +113,14 @@ if st.session_state.start_info and st.session_state.end_info:
 
 st.divider()
 
-# --- 운송 및 할증 정보 입력 영역 ---
+# --- 운송 정보 입력 영역 ---
 st.subheader("📦 2. 운송 상세 정보 입력")
 col1, col2 = st.columns(2)
 
+VEHICLES = list(config.FARE_TABLE[0]["fares"].keys())
+
 with col1:
-    vehicle = st.selectbox("운송 수단 선택", list(config.BASE_FARES.keys()))
+    vehicle = st.selectbox("운송 수단 선택", VEHICLES)
     distance = st.number_input(
         "운행 거리 (km)",
         min_value=0.0,
@@ -125,7 +128,6 @@ with col1:
         step=0.5,
         format="%.1f",
     )
-    cargo = st.radio("화물 옵션 선택", list(config.CARGO_FARES.keys()))
 
 with col2:
     st.write("할증 조건 (해당 시 체크)")
@@ -135,10 +137,16 @@ st.divider()
 
 # --- 요금 산출 결과 ---
 st.subheader("💰 요금 산출 결과")
-res = calculate_fares(distance, vehicle, cargo, selected_surcharges)
+res = calculate_fares(distance, vehicle, selected_surcharges)
+
+if res["over_range"]:
+    st.warning(f"⚠️ 입력 거리({distance:.1f}km)가 요금표 최대 구간(500km)을 초과합니다. 500km 기준 요금으로 표시됩니다.")
+
+if res["is_negotiable"]:
+    st.info(f"💬 **{vehicle}**는 표시 요금이 최저가입니다. 실제 요금은 화물 상태에 따라 협의하세요.")
 
 if selected_surcharges:
-    st.info(f"💡 적용된 할증: {', '.join(selected_surcharges)} (총 +{int(res['customer']['rate'] * 100)}% 적용)")
+    st.info(f"💡 적용된 할증: {', '.join(selected_surcharges)} (총 +{int(res['customer']['rate'] * 100)}%)")
 
 summary_col1, summary_col2, summary_col3 = st.columns(3)
 with summary_col1:
@@ -148,18 +156,15 @@ with summary_col2:
 with summary_col3:
     st.info(f"**사무소 수익(마진)**\n### {res['profit']:,} 원")
 
-st.write("---")
 with st.expander("🔍 항목별 세부 내역 보기"):
     detail_col1, detail_col2 = st.columns(2)
     with detail_col1:
         st.markdown("**[청구 요금 내역]**")
-        st.write(f"- 기본료: {res['customer']['base']:,} 원")
-        st.write(f"- 거리 추가: {res['customer']['dist']:,} 원")
-        st.write(f"- 화물 추가: {res['customer']['cargo']:,} 원")
+        st.write(f"- 구간 기본료: {res['customer']['base']:,} 원")
         st.write(f"- 할증 금액: {int(res['customer']['surcharge_amount']):,} 원")
+        st.write(f"- **합계: {res['customer']['total']:,} 원**")
     with detail_col2:
         st.markdown("**[운영 원가 내역]**")
-        st.write(f"- 기본료: {res['actual']['base']:,} 원")
-        st.write(f"- 거리 추가: {res['actual']['dist']:,} 원")
-        st.write(f"- 화물 추가: {res['actual']['cargo']:,} 원")
+        st.write(f"- 구간 기본료: {res['actual']['base']:,} 원")
         st.write(f"- 할증 금액: {int(res['actual']['surcharge_amount']):,} 원")
+        st.write(f"- **합계: {res['actual']['total']:,} 원**")

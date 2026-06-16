@@ -1,50 +1,46 @@
 import config
 
 
-def calculate_fares(distance, vehicle, cargo, selected_surcharges):
-    """입력받은 정보를 바탕으로 고객 청구 요금, 실제 원가, 마진을 계산합니다."""
-    distance_rounded = round(distance)
-    extra_distance = max(0, distance_rounded - config.FREE_DISTANCE)
+def get_base_fare(distance_km, vehicle):
+    """거리와 차종으로 전국거리운송표에서 고객 청구 기본 요금을 반환합니다."""
+    for band in config.FARE_TABLE:
+        if distance_km <= band["max_km"]:
+            return band["fares"].get(vehicle, 0)
+    # 표 최대 거리(220km) 초과 시 마지막 구간 요금 반환
+    return config.FARE_TABLE[-1]["fares"].get(vehicle, 0)
 
-    # 1. 고객 청구 요금 계산
-    base_fare = config.BASE_FARES[vehicle]
-    distance_fare = extra_distance * config.COST_PER_KM
-    cargo_fare = config.CARGO_FARES[cargo]
-    subtotal = base_fare + distance_fare + cargo_fare
-    total_surcharge_rate = sum(config.SURCHARGE_RATES[c] for c in selected_surcharges)
-    surcharge_amount = subtotal * total_surcharge_rate
-    final_total_fare = int(subtotal + surcharge_amount)
 
-    # 2. 실제 운영 요금(기사 지급/원가) 계산
-    actual_base_fare = config.ACTUAL_BASE_FARES[vehicle]
-    actual_distance_fare = extra_distance * config.ACTUAL_COST_PER_KM
-    actual_cargo_fare = config.ACTUAL_CARGO_FARES[cargo]
-    actual_subtotal = actual_base_fare + actual_distance_fare + actual_cargo_fare
-    actual_total_surcharge_rate = sum(
-        config.ACTUAL_SURCHARGE_RATES[c] for c in selected_surcharges
-    )
-    actual_surcharge_amount = actual_subtotal * actual_total_surcharge_rate
-    final_actual_fare = int(actual_subtotal + actual_surcharge_amount)
+def calculate_fares(distance, vehicle, selected_surcharges):
+    """고객 청구 요금, 기사 지급 원가, 사무소 수익을 계산합니다."""
+    # 1. 구간 요금표에서 기본 요금 조회
+    base_customer = get_base_fare(distance, vehicle)
 
-    # 3. 수익(마진) 계산
-    profit = final_total_fare - final_actual_fare
+    # 2. 고객 청구 요금 (기본 + 할증)
+    surcharge_rate = sum(config.SURCHARGE_RATES[c] for c in selected_surcharges)
+    customer_surcharge = base_customer * surcharge_rate
+    total_customer = int(base_customer + customer_surcharge)
+
+    # 3. 기사 지급 원가 (고객 요금의 80%)
+    base_driver = int(base_customer * config.DRIVER_RATIO)
+    driver_surcharge = base_driver * surcharge_rate
+    total_driver = int(base_driver + driver_surcharge)
+
+    # 4. 사무소 수익(마진)
+    profit = total_customer - total_driver
 
     return {
-        "extra_distance": extra_distance,
         "customer": {
-            "base": base_fare,
-            "dist": distance_fare,
-            "cargo": cargo_fare,
-            "surcharge_amount": surcharge_amount,
-            "total": final_total_fare,
-            "rate": total_surcharge_rate,
+            "base": base_customer,
+            "surcharge_amount": customer_surcharge,
+            "total": total_customer,
+            "rate": surcharge_rate,
         },
         "actual": {
-            "base": actual_base_fare,
-            "dist": actual_distance_fare,
-            "cargo": actual_cargo_fare,
-            "surcharge_amount": actual_surcharge_amount,
-            "total": final_actual_fare,
+            "base": base_driver,
+            "surcharge_amount": driver_surcharge,
+            "total": total_driver,
         },
         "profit": profit,
+        "is_negotiable": vehicle in config.NEGOTIABLE_VEHICLES,
+        "over_range": distance > config.FARE_TABLE[-1]["max_km"],
     }
