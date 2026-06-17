@@ -6,6 +6,7 @@ import urllib.parse
 import config
 from api_services import search_places_kakao, get_directions_kakao
 from calculator import calculate_fares
+from ai_parser import parse_order_text
 
 # =====================================================================
 # [상태 저장소 (Session State)]
@@ -88,6 +89,52 @@ api_ready = config.KAKAO_API_KEY.strip() and config.KAKAO_API_KEY != "여기에_
 if not api_ready:
     st.error("⚠️ 카카오 REST API 키가 설정되지 않았습니다. Secrets에 `KAKAO_API_KEY`를 설정해 주세요.")
 
+ai_ready = bool(config.ANTHROPIC_API_KEY.strip())
+
+QUICK_VEHICLES = ["오토바이", "다마스", "라보", "1톤"]
+ALL_VEHICLES = list(config.FARE_TABLE[0]["fares"].keys())
+
+# =====================================================================
+# [0. 통화 후 빠른 입력 (AI 자동 분석)]
+# =====================================================================
+with st.container(border=True):
+    st.markdown("### 🤖 0. 통화 후 빠른 입력 (선택)")
+    st.caption("통화하면서 메모한 내용을 그대로 적으면 출발지·도착지·차종·할증을 자동으로 채워드려요.")
+    order_text = st.text_area(
+        "주문 메모",
+        placeholder="예: 강남역에서 잠실역, 1톤 트럭, 비 와서 급하게 보내야 해요",
+        label_visibility="collapsed",
+    )
+    if st.button("🤖 AI로 자동 입력", use_container_width=True, disabled=not ai_ready):
+        if not order_text.strip():
+            st.warning("메모를 입력해 주세요.")
+        else:
+            with st.spinner("주문 내용을 분석하는 중입니다..."):
+                try:
+                    parsed = parse_order_text(order_text, ALL_VEHICLES, list(config.SURCHARGE_RATES.keys()))
+                except Exception:
+                    parsed = None
+
+            if parsed is None:
+                st.error("AI 분석에 실패했습니다. 직접 입력해 주세요.")
+            else:
+                if parsed.start_location:
+                    st.session_state["start_keyword"] = parsed.start_location
+                if parsed.end_location:
+                    st.session_state["end_keyword"] = parsed.end_location
+                if parsed.vehicle in QUICK_VEHICLES:
+                    st.session_state["vehicle_select"] = parsed.vehicle
+                    st.session_state["big_vehicle_checkbox"] = False
+                elif parsed.vehicle in ALL_VEHICLES:
+                    st.session_state["big_vehicle_select"] = parsed.vehicle
+                    st.session_state["big_vehicle_checkbox"] = True
+                st.session_state["surcharge_pills"] = [
+                    s for s in parsed.surcharges if s in config.SURCHARGE_RATES
+                ]
+                st.success("출발지·도착지·차종·할증을 자동으로 채웠습니다. 아래에서 확인해 주세요.")
+    if not ai_ready:
+        st.caption("⚠️ AI 자동 입력을 사용하려면 Secrets에 `ANTHROPIC_API_KEY`를 설정해 주세요.")
+
 # =====================================================================
 # [1. 지도 길찾기 및 거리 자동 계산]
 # =====================================================================
@@ -99,7 +146,7 @@ with st.container(border=True):
     end_loc = None
 
     with col_addr1:
-        start_keyword = st.text_input("출발지", placeholder="예: 강남역, 서울시청")
+        start_keyword = st.text_input("출발지", placeholder="예: 강남역, 서울시청", key="start_keyword")
         if start_keyword and api_ready:
             start_res = search_places_kakao(start_keyword, config.KAKAO_API_KEY)
             if start_res:
@@ -113,7 +160,7 @@ with st.container(border=True):
                 st.warning(f"'{start_keyword}' 검색 결과가 없습니다.")
 
     with col_addr2:
-        end_keyword = st.text_input("도착지", placeholder="예: 부산역, 광화문")
+        end_keyword = st.text_input("도착지", placeholder="예: 부산역, 광화문", key="end_keyword")
         if end_keyword and api_ready:
             end_res = search_places_kakao(end_keyword, config.KAKAO_API_KEY)
             if end_res:
@@ -172,17 +219,21 @@ with st.container(border=True):
 # =====================================================================
 # [2. 운송 정보 입력]
 # =====================================================================
-QUICK_VEHICLES = ["오토바이", "다마스", "라보", "1톤"]
-ALL_VEHICLES = list(config.FARE_TABLE[0]["fares"].keys())
-
 with st.container(border=True):
     st.markdown("### 🚚 2. 차종 & 할증 선택")
 
-    vehicle = st.segmented_control("운송 수단", options=QUICK_VEHICLES, default=QUICK_VEHICLES[0])
+    vehicle = st.segmented_control(
+        "운송 수단", options=QUICK_VEHICLES, default=QUICK_VEHICLES[0], key="vehicle_select"
+    )
 
-    with st.expander("🚛 더 큰 차량이 필요하신가요? (1.4톤 ~ 25톤)"):
-        big_vehicle = st.selectbox("대형 차량 선택", [v for v in ALL_VEHICLES if v not in QUICK_VEHICLES])
-        if st.checkbox(f"'{big_vehicle}'으로 계산하기"):
+    with st.expander(
+        "🚛 더 큰 차량이 필요하신가요? (1.4톤 ~ 25톤)",
+        expanded=st.session_state.get("big_vehicle_checkbox", False),
+    ):
+        big_vehicle = st.selectbox(
+            "대형 차량 선택", [v for v in ALL_VEHICLES if v not in QUICK_VEHICLES], key="big_vehicle_select"
+        )
+        if st.checkbox(f"'{big_vehicle}'으로 계산하기", key="big_vehicle_checkbox"):
             vehicle = big_vehicle
 
     vehicle = vehicle or QUICK_VEHICLES[0]
@@ -199,6 +250,7 @@ with st.container(border=True):
         "할증 조건 (해당 시 선택, 다중 선택 가능)",
         options=list(config.SURCHARGE_RATES.keys()),
         selection_mode="multi",
+        key="surcharge_pills",
     )
     selected_surcharges = selected_surcharges or []
 
