@@ -1,6 +1,15 @@
 import os
+import streamlit as st
 
-KAKAO_API_KEY = os.environ.get("KAKAO_API_KEY", "여기에_API_키를_입력하세요")
+
+def _get_kakao_api_key():
+    try:
+        return st.secrets["KAKAO_API_KEY"]
+    except (KeyError, FileNotFoundError, st.errors.StreamlitAPIException):
+        return os.environ.get("KAKAO_API_KEY", "여기에_API_키를_입력하세요")
+
+
+KAKAO_API_KEY = _get_kakao_api_key()
 
 # =====================================================================
 # 전국거리운송표 (황소특송화물 TEL: 1633-8882)
