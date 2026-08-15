@@ -61,22 +61,6 @@ st.markdown(
     .fare-hero .label { font-size: 1.15rem; opacity: 0.95; font-weight: 600; }
     .fare-hero .amount { font-size: 3.2rem; font-weight: 800; letter-spacing: -1px; line-height: 1.2; }
     .fare-hero .amount span { font-size: 1.4rem; font-weight: 600; }
-
-    .sub-card {
-        border-radius: 14px;
-        padding: 18px;
-        text-align: center;
-    }
-    .sub-card .label { font-size: 1rem; font-weight: 600; }
-    .sub-card .amount { font-size: 1.7rem; font-weight: 800; margin-top: 4px; }
-
-    .driver-card { background: #F4F6F8; }
-    .driver-card .label { color: #555; }
-    .driver-card .amount { color: #1A1A2E; }
-
-    .profit-card { background: #E8F5E9; }
-    .profit-card .label { color: #2E7D32; }
-    .profit-card .amount { color: #1B5E20; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -280,37 +264,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-col_a, col_b = st.columns(2)
-with col_a:
-    st.markdown(
-        f"""
-        <div class="sub-card driver-card">
-            <div class="label">기사 지급 요금(원가)</div>
-            <div class="amount">{res['actual']['total']:,}원</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with col_b:
-    st.markdown(
-        f"""
-        <div class="sub-card profit-card">
-            <div class="label">사무소 수익(마진)</div>
-            <div class="amount">{res['profit']:,}원</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with st.expander("🔍 항목별 세부 내역 보기"):
-    detail_col1, detail_col2 = st.columns(2)
-    with detail_col1:
-        st.markdown("**[청구 요금 내역]**")
-        st.write(f"- 구간 기본료: {res['customer']['base']:,} 원")
-        st.write(f"- 할증 금액: {int(res['customer']['surcharge_amount']):,} 원")
-        st.write(f"- **합계: {res['customer']['total']:,} 원**")
-    with detail_col2:
-        st.markdown("**[운영 원가 내역]**")
-        st.write(f"- 구간 기본료: {res['actual']['base']:,} 원")
-        st.write(f"- 할증 금액: {int(res['actual']['surcharge_amount']):,} 원")
-        st.write(f"- **합계: {res['actual']['total']:,} 원**")
+with st.expander("🔍 요금 세부 내역 보기"):
+    st.write(f"- 구간 기본료: {res['customer']['base']:,} 원")
+    st.write(f"- 할증 금액: {int(res['customer']['surcharge_amount']):,} 원")
+    st.write(f"- **합계: {res['customer']['total']:,} 원**")
