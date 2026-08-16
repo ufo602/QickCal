@@ -6,7 +6,7 @@ import urllib.parse
 
 import config
 from api_services import search_places_kakao, get_directions_kakao
-from calculator import calculate_fares
+from calculator import calculate_fares, get_base_fare
 from ai_parser import parse_order_text
 
 # =====================================================================
@@ -298,11 +298,45 @@ def build_fare_table_df():
     return pd.DataFrame(rows).set_index("거리")
 
 
+def find_fare_band_label(distance_km):
+    """거리에 해당하는 구간 라벨을 반환합니다."""
+    for label, band in zip(FARE_BAND_LABELS, config.FARE_TABLE):
+        if distance_km <= band["max_km"]:
+            return label
+    return FARE_BAND_LABELS[-1]
+
+
 with st.container(border=True):
-    st.markdown("### 📋 4. 전국거리운송표 (요금 참고)")
+    st.markdown("### 📋 4. 요금표 빠른 조회")
+    st.caption("거리와 차종만 넣으면 요금표에서 바로 찾아드려요. (지도 검색 없이도 조회 가능)")
+
+    look_col1, look_col2 = st.columns(2)
+    with look_col1:
+        look_distance = st.number_input(
+            "거리 (km)", min_value=0.0, value=0.0, step=1.0, format="%.1f", key="lookup_distance"
+        )
+    with look_col2:
+        look_vehicle = st.selectbox("차종", ALL_VEHICLES, key="lookup_vehicle")
+
+    if look_distance > 0:
+        look_price = get_base_fare(look_distance, look_vehicle)
+        look_label = find_fare_band_label(look_distance)
+        look_negotiable = look_vehicle in config.NEGOTIABLE_VEHICLES
+        over = look_distance > config.FARE_TABLE[-1]["max_km"]
+        suffix = "~ (최저가·협의 가능)" if look_negotiable else ""
+        st.success(f"🚚 **{look_vehicle}** · **{look_label}** 구간 → **{look_price:,}원**{suffix}")
+        if over:
+            st.warning(f"⚠️ 입력 거리({look_distance:.1f}km)가 요금표 최대 구간(500km)을 초과합니다. 500km 기준 요금입니다.")
+
     with st.expander("📋 차종·거리별 요금표 전체 보기"):
         st.caption("단위: 원 · 요금 뒤 '~'는 최저가로 화물 상태에 따라 협의 가능합니다.")
-        st.dataframe(build_fare_table_df(), use_container_width=True, height=430)
+        table_df = build_fare_table_df()
+        show_vehicles = st.multiselect(
+            "표시할 차종 (비우면 전체)", options=ALL_VEHICLES, default=[], key="table_vehicle_filter"
+        )
+        if show_vehicles:
+            table_df = table_df[show_vehicles]
+        st.dataframe(table_df, use_container_width=True, height=430)
         st.markdown(
             """
             **참고사항**
