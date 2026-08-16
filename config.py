@@ -22,6 +22,14 @@ def _get_gemini_api_key():
 GEMINI_API_KEY = _get_gemini_api_key()
 GEMINI_MODEL = "gemini-flash-latest"
 
+
+def sheets_ready():
+    """구글 시트(주문 기록) 연동이 설정돼 있는지 확인합니다."""
+    try:
+        return "gcp_service_account" in st.secrets and bool(st.secrets.get("GSHEET_ID"))
+    except (FileNotFoundError, st.errors.StreamlitAPIException):
+        return False
+
 # =====================================================================
 # 전국거리운송표 (황소특송화물 TEL: 1633-8882)
 # 형식: {"max_km": 최대거리, "fares": {차종: 고객청구요금}}

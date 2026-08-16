@@ -3,8 +3,10 @@ import folium
 from streamlit_folium import st_folium
 import pandas as pd
 import urllib.parse
+from datetime import datetime
 
 import config
+import order_log
 from api_services import search_places_kakao, get_directions_kakao
 from calculator import calculate_fares, get_base_fare
 from ai_parser import parse_order_text
@@ -75,9 +77,30 @@ if not api_ready:
     st.error("⚠️ 카카오 REST API 키가 설정되지 않았습니다. Secrets에 `KAKAO_API_KEY`를 설정해 주세요.")
 
 ai_ready = bool(config.GEMINI_API_KEY.strip())
+sheets_ready = config.sheets_ready()
 
 QUICK_VEHICLES = ["오토바이", "다마스", "라보", "1톤"]
 ALL_VEHICLES = list(config.FARE_TABLE[0]["fares"].keys())
+
+# 요금표 이미지의 실제 거리 구간 라벨 (config.FARE_TABLE 순서와 1:1 대응)
+FARE_BAND_LABELS = [
+    "0~6km", "6.1~10km", "10.1~18km", "18.1~21.9km", "22~30km",
+    "30.1~36km", "36.1~42km", "42.1~47.4km", "47.5~51km", "51.1~57km",
+    "57.1~65.9km", "66~70.9km", "71~81km", "81.1~87km", "87.1~96km",
+    "96.1~112km", "112.1~121km", "121.1~136km", "136.1~150km", "150.1~160km",
+    "161~175km", "175.1~185km", "186~200km", "201~210km", "211~220km",
+    "221~235km", "236~250km", "251~260km", "260.1~276km", "276.1~285km",
+    "286~300km", "301~325km", "326~335km", "335.1~350km", "350.1~365km",
+    "366~376km", "376.1~400km", "401~430km", "431~450km", "451~500km",
+]
+
+
+def find_fare_band_label(distance_km):
+    """거리에 해당하는 구간 라벨을 반환합니다."""
+    for label, band in zip(FARE_BAND_LABELS, config.FARE_TABLE):
+        if distance_km <= band["max_km"]:
+            return label
+    return FARE_BAND_LABELS[-1]
 
 # =====================================================================
 # [0. 통화 후 빠른 입력 (AI 자동 분석)]
@@ -270,22 +293,61 @@ with st.expander("🔍 요금 세부 내역 보기"):
     st.write(f"- 할증 금액: {int(res['customer']['surcharge_amount']):,} 원")
     st.write(f"- **합계: {res['customer']['total']:,} 원**")
 
+# ---------------------------------------------------------------------
+# [실제 거래가 기록 + 최근 실제가 통계]  ※ 구글 시트 연동 시에만 표시
+# ---------------------------------------------------------------------
+if sheets_ready and distance > 0:
+    current_band = find_fare_band_label(distance)
+
+    stats = None
+    try:
+        stats = order_log.get_recent_stats(current_band, vehicle)
+    except Exception:
+        stats = None
+
+    if stats:
+        diff = stats["avg"] - res["customer"]["base"]
+        diff_txt = f"표 기준가 대비 {'+' if diff >= 0 else ''}{diff:,}원"
+        st.info(
+            f"📈 **{current_band} · {vehicle}** 과거 실제가 (기록 {stats['count']}건): "
+            f"평균 **{stats['avg']:,}원** · 최근 **{stats['recent_avg']:,}원** "
+            f"· 범위 {stats['min']:,}~{stats['max']:,}원 ({diff_txt})"
+        )
+
+    with st.expander("💾 이 주문의 실제 청구가 기록하기 (쓸수록 정확해져요)"):
+        st.caption("전화로 협의한 최종 금액을 기록하면, 다음부터 같은 구간·차종에서 실제 평균가를 보여드려요.")
+        actual_price = st.number_input(
+            "실제 청구가 (협의 최종 금액)",
+            min_value=0,
+            value=int(res["customer"]["total"]),
+            step=1000,
+            key="actual_price_input",
+        )
+        if st.button("💾 주문 기록 저장", use_container_width=True):
+            start_name = (st.session_state.get("start_info") or {}).get("name") or st.session_state.get("start_keyword", "")
+            end_name = (st.session_state.get("end_info") or {}).get("name") or st.session_state.get("end_keyword", "")
+            record = {
+                "일시": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "출발지": start_name,
+                "도착지": end_name,
+                "거리km": round(distance, 1),
+                "차종": vehicle,
+                "구간": current_band,
+                "표기준가": res["customer"]["base"],
+                "실제청구가": int(actual_price),
+                "할증": ", ".join(selected_surcharges),
+            }
+            try:
+                order_log.append_order(record)
+                st.success("✅ 기록되었습니다. 다음 견적부터 반영됩니다.")
+            except Exception:
+                st.error("기록 저장에 실패했습니다. 구글 시트 설정(공유 권한)을 확인해 주세요.")
+elif not sheets_ready:
+    st.caption("💡 구글 시트를 연동하면 실제 거래가를 기록하고 '쓸수록 정확해지는 요금'을 쓸 수 있어요.")
+
 # =====================================================================
 # [4. 전국거리운송표 전체 보기 (요금 참고)]
 # =====================================================================
-# 요금표 이미지의 실제 거리 구간 라벨 (config.FARE_TABLE 순서와 1:1 대응)
-FARE_BAND_LABELS = [
-    "0~6km", "6.1~10km", "10.1~18km", "18.1~21.9km", "22~30km",
-    "30.1~36km", "36.1~42km", "42.1~47.4km", "47.5~51km", "51.1~57km",
-    "57.1~65.9km", "66~70.9km", "71~81km", "81.1~87km", "87.1~96km",
-    "96.1~112km", "112.1~121km", "121.1~136km", "136.1~150km", "150.1~160km",
-    "161~175km", "175.1~185km", "186~200km", "201~210km", "211~220km",
-    "221~235km", "236~250km", "251~260km", "260.1~276km", "276.1~285km",
-    "286~300km", "301~325km", "326~335km", "335.1~350km", "350.1~365km",
-    "366~376km", "376.1~400km", "401~430km", "431~450km", "451~500km",
-]
-
-
 @st.cache_data(show_spinner=False)
 def build_fare_table_df():
     """전국거리운송표를 참고용 데이터프레임으로 만듭니다. (협의 차종은 요금 뒤 '~')"""
@@ -296,14 +358,6 @@ def build_fare_table_df():
             row[veh] = f"{price:,}~" if veh in config.NEGOTIABLE_VEHICLES else f"{price:,}"
         rows.append(row)
     return pd.DataFrame(rows).set_index("거리")
-
-
-def find_fare_band_label(distance_km):
-    """거리에 해당하는 구간 라벨을 반환합니다."""
-    for label, band in zip(FARE_BAND_LABELS, config.FARE_TABLE):
-        if distance_km <= band["max_km"]:
-            return label
-    return FARE_BAND_LABELS[-1]
 
 
 with st.container(border=True):
