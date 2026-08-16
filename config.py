@@ -20,7 +20,7 @@ def _get_gemini_api_key():
 
 
 GEMINI_API_KEY = _get_gemini_api_key()
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-flash-latest"
 
 # =====================================================================
 # 전국거리운송표 (황소특송화물 TEL: 1633-8882)
