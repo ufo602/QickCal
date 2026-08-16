@@ -74,7 +74,7 @@ api_ready = config.KAKAO_API_KEY.strip() and config.KAKAO_API_KEY != "여기에_
 if not api_ready:
     st.error("⚠️ 카카오 REST API 키가 설정되지 않았습니다. Secrets에 `KAKAO_API_KEY`를 설정해 주세요.")
 
-ai_ready = bool(config.ANTHROPIC_API_KEY.strip())
+ai_ready = bool(config.GEMINI_API_KEY.strip())
 
 QUICK_VEHICLES = ["오토바이", "다마스", "라보", "1톤"]
 ALL_VEHICLES = list(config.FARE_TABLE[0]["fares"].keys())
@@ -118,7 +118,7 @@ with st.container(border=True):
                 ]
                 st.success("출발지·도착지·차종·할증을 자동으로 채웠습니다. 아래에서 확인해 주세요.")
     if not ai_ready:
-        st.caption("⚠️ AI 자동 입력을 사용하려면 Secrets에 `ANTHROPIC_API_KEY`를 설정해 주세요.")
+        st.caption("⚠️ AI 자동 입력을 사용하려면 Secrets에 `GEMINI_API_KEY`를 설정해 주세요.")
 
 # =====================================================================
 # [1. 지도 길찾기 및 거리 자동 계산]

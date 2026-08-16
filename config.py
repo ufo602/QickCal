@@ -12,14 +12,15 @@ def _get_kakao_api_key():
 KAKAO_API_KEY = _get_kakao_api_key()
 
 
-def _get_anthropic_api_key():
+def _get_gemini_api_key():
     try:
-        return st.secrets["ANTHROPIC_API_KEY"]
+        return st.secrets["GEMINI_API_KEY"]
     except (KeyError, FileNotFoundError, st.errors.StreamlitAPIException):
-        return os.environ.get("ANTHROPIC_API_KEY", "")
+        return os.environ.get("GEMINI_API_KEY", "")
 
 
-ANTHROPIC_API_KEY = _get_anthropic_api_key()
+GEMINI_API_KEY = _get_gemini_api_key()
+GEMINI_MODEL = "gemini-flash-latest"
 
 # =====================================================================
 # 전국거리운송표 (황소특송화물 TEL: 1633-8882)

@@ -1,7 +1,8 @@
 from typing import List
 
 import streamlit as st
-from anthropic import Anthropic
+from google import genai
+from google.genai import types
 from pydantic import BaseModel
 
 import config
@@ -16,7 +17,7 @@ class ParsedOrder(BaseModel):
 
 @st.cache_resource(show_spinner=False)
 def _get_client():
-    return Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    return genai.Client(api_key=config.GEMINI_API_KEY)
 
 
 def parse_order_text(order_text, vehicle_options, surcharge_options):
@@ -29,11 +30,14 @@ def parse_order_text(order_text, vehicle_options, surcharge_options):
         "메모에 없는 정보는 빈 문자열 또는 빈 리스트로 둬라."
     )
 
-    response = _get_client().messages.parse(
-        model="claude-opus-4-8",
-        max_tokens=1024,
-        system=system_prompt,
-        messages=[{"role": "user", "content": order_text}],
-        output_format=ParsedOrder,
+    response = _get_client().models.generate_content(
+        model=config.GEMINI_MODEL,
+        contents=order_text,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=ParsedOrder,
+            temperature=0,
+        ),
     )
-    return response.parsed_output
+    return response.parsed
