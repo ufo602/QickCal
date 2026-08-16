@@ -1,6 +1,7 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
+import pandas as pd
 import urllib.parse
 
 import config
@@ -268,3 +269,45 @@ with st.expander("🔍 요금 세부 내역 보기"):
     st.write(f"- 구간 기본료: {res['customer']['base']:,} 원")
     st.write(f"- 할증 금액: {int(res['customer']['surcharge_amount']):,} 원")
     st.write(f"- **합계: {res['customer']['total']:,} 원**")
+
+# =====================================================================
+# [4. 전국거리운송표 전체 보기 (요금 참고)]
+# =====================================================================
+# 요금표 이미지의 실제 거리 구간 라벨 (config.FARE_TABLE 순서와 1:1 대응)
+FARE_BAND_LABELS = [
+    "0~6km", "6.1~10km", "10.1~18km", "18.1~21.9km", "22~30km",
+    "30.1~36km", "36.1~42km", "42.1~47.4km", "47.5~51km", "51.1~57km",
+    "57.1~65.9km", "66~70.9km", "71~81km", "81.1~87km", "87.1~96km",
+    "96.1~112km", "112.1~121km", "121.1~136km", "136.1~150km", "150.1~160km",
+    "161~175km", "175.1~185km", "186~200km", "201~210km", "211~220km",
+    "221~235km", "236~250km", "251~260km", "260.1~276km", "276.1~285km",
+    "286~300km", "301~325km", "326~335km", "335.1~350km", "350.1~365km",
+    "366~376km", "376.1~400km", "401~430km", "431~450km", "451~500km",
+]
+
+
+@st.cache_data(show_spinner=False)
+def build_fare_table_df():
+    """전국거리운송표를 참고용 데이터프레임으로 만듭니다. (협의 차종은 요금 뒤 '~')"""
+    rows = []
+    for label, band in zip(FARE_BAND_LABELS, config.FARE_TABLE):
+        row = {"거리": label}
+        for veh, price in band["fares"].items():
+            row[veh] = f"{price:,}~" if veh in config.NEGOTIABLE_VEHICLES else f"{price:,}"
+        rows.append(row)
+    return pd.DataFrame(rows).set_index("거리")
+
+
+with st.container(border=True):
+    st.markdown("### 📋 4. 전국거리운송표 (요금 참고)")
+    with st.expander("📋 차종·거리별 요금표 전체 보기"):
+        st.caption("단위: 원 · 요금 뒤 '~'는 최저가로 화물 상태에 따라 협의 가능합니다.")
+        st.dataframe(build_fare_table_df(), use_container_width=True, height=430)
+        st.markdown(
+            """
+            **참고사항**
+            - 탑차·윙바디·리프트 차량은 1~3만원 추가됩니다.
+            - 화물 특성(이사짐 등)·작업 조건·수작업·야간 운송·지역 특성(강원도·서울)에 따라 요금이 변경될 수 있습니다.
+            - 상·하차 시간 지연, 천재지변·악천후, 차량 정체·퇴근 시간에는 추가 요금이 발생할 수 있습니다.
+            """
+        )
